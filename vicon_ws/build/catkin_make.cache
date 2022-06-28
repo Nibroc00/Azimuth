@@ -1,0 +1,2 @@
+vicon_bridge
+-DCATKIN_DEVEL_PREFIX=/home/lucas/Documents/REU/Azimuth/vicon_ws/devel -DCMAKE_INSTALL_PREFIX=/home/lucas/Documents/REU/Azimuth/vicon_ws/install -G Unix Makefiles
