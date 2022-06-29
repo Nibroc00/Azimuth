@@ -1,10 +1,13 @@
 #!/user/bin/env python
+from ast import Str
+from gettext import translation
 import rospy
 import tf2_ros
 import tf2_msgs.msg
 import geometry_msgs.msg
 import pynmeagps
 from geographiclib.geodesic import Geodesic
+from azimuth.msg import GPS
 import math
 
 
@@ -40,6 +43,8 @@ class translator:
                                 azi, dis)
 
 trans = translator(40.819375, -96.706161)
+pub = rospy.Publisher('gps_output', GPS, queue_size=10)
+rospy.init_node('translator', anonymous=True)
 
 def callback(t):
 
@@ -50,13 +55,26 @@ def callback(t):
     location = trans.gpsfromlocal(azi, dis)
 
     rospy.loginfo("azi: {}\tdis{}\tlat: {}\tlon: {}".format(azi, dis, location['lat2'], location['lon2']))
+    
+
+
+
+    gps_message = GPS()
+    gps_message.latitude = location['lat2']
+    gps_message.longitude = location['lon2']
+    gps_message.altitude = t.transform.translation.z
+    pub.publish(gps_message)
+
     trans.updatepos(t.transform.translation.x,
                     t.transform.translation.y,
                     t.transform.translation.z)
+
+
 def listener():
-    rospy.init_node('listener', anonymous=True)
-    rospy.Subscriber("vicon/BATMAN/BATMAN", geometry_msgs.msg.TransformStamped, callback)
+    rospy.Subscriber("vicon/wand/wand", geometry_msgs.msg.TransformStamped, callback)
     rospy.spin()
+
 
 if __name__ == '__main__':
     listener()
+    
