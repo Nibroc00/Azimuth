@@ -4,13 +4,15 @@ from gettext import translation
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
+from pynmeagps import NMEAMessage, GET
 from geographiclib.geodesic import Geodesic
 from azimuth.msg import GPS
 import math
 from datetime import datetime, timezone
 import serial
 MAG_DECLINATION = 2.78
-
+MPS_TO_KPH = 3.6
+MPS_TO_KNOTS = 1.94384
 
 class translator:
 
@@ -75,28 +77,45 @@ class translator:
         #Inilizise variables needed for msgs
         loc = self.gpsfromlocal(curx, cury)
         time = datetime.now(timezone.utc).time()
-        course = course(curx, curz)
+        course = self.course(curx, curz)
         coursem = course + MAG_DECLINATION
         if (course + MAG_DECLINATION) < 360:
             coursem = 360 - (course + MAG_DECLINATION)
-        speed = speed(curx, cury)
+        speed = self.speed(curx, cury)
 
 
         GGA = NMEAMessage('GP', 'GGA', GET, time=time,
-                          lat=loc['lat2'], NS='N',
-                          lon=loc['lon2'], EW='W',
+                          lat=round(loc['lat2'], 7), NS='N',
+                          lon=round(loc['lon2'], 7), EW='W',
                           quality=1, numSV=12,
-                          HPOD=0, alt=curz,
+                          HPOD=1, alt=round(curz, 2),
                           altUnit='M', sep=0, sepUnit='M',
                           diffStation=0)
 
-        VTG = NMEAMessage('GP', 'VTG', 'GET', cogt=course,
-                          cogtUnit='DEG', cogm=coursem)
-        return (msg)
+        VTG = NMEAMessage('GP', 'VTG', GET, cogt=round(course, 2),
+                          cogtUnit='DEG', cogm=round(coursem, 2),
+                          sogn=round(speed * MPS_TO_KPH, 2),
+                          sognUnit='K',
+                          sogk=round(speed * MPS_TO_KNOTS, 2),
+                          sogkUnit='N')
+
+        RMC = NMEAMessage('GP', 'RMC', GET,
+                          status='A',
+                          lat=round(loc['lat2'], 7), NS='N',
+                          lon=round(loc['lon2'], 7), EW='W',
+                          spd=round(speed * MPS_TO_KNOTS, 2),
+                          cog=round(course, 2),
+                          mv=MAG_DECLINATION,
+                          mvEW='E',
+                          posMode='A',
+                          navStatus='A'
+                          )
+
+        return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC}
 
 
 trans = translator(40.819375, -96.706161)
-ser = serial.Serial('/dev/ttyUSB0', baudrate=230400)
+ser = serial.Serial('/dev/ttyUSB0', baudrate=38400)
 
 pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
@@ -105,19 +124,13 @@ rospy.init_node('translator', anonymous=True)
 def callback(t):
     location = trans.gpsfromlocal(t.transform.translation.x,  # Calc gps lat/
                                   t.transform.translation.y)  # lon from local
-
-    #msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA GPGGA 
-    #                      t.transform.translation.y,  # msg from local postion
-    #                      t.transform.translation.z)
-
-    #rospy.loginfo("lat: {}\tlon: {}".format(location['lat2'],
-    #                                        location['lon2']))
-
-    rospy.loginfo("speed: {}\t\t{},{}\t {}".format(speed,
-                                                   t.transform.translation.x,
-                                                   t.transform.translation.y,
-                                                   trans.lastupdate.timestamp()
-                                                   ))
+    msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA 
+                          t.transform.translation.y,  # msgs from local postion
+                          t.transform.translation.z)
+    ser.write(msgs['GGA'].serialize())
+    ser.write(msgs['VTG'].serialize())
+    ser.write(msgs['RMC'].serialize())
+    rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'], msgs['VTG'], msgs['RMC']))
 
     gps_message = GPS()
     gps_message.latitude = location['lat2']
@@ -131,7 +144,7 @@ def callback(t):
 
 
 def listener():
-    rospy.Subscriber("vicon/SOMR/SOMR", geometry_msgs.msg.TransformStamped,
+    rospy.Subscriber("vicon/CNC_Head/CNC_Head", geometry_msgs.msg.TransformStamped,
                      callback)
     rospy.spin()
 
