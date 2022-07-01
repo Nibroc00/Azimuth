@@ -24,7 +24,7 @@ class translator:
         self.lastz = 0
         self.lastupdate = datetime.now(timezone.utc)
         self.lastspeedcalc = datetime.now(timezone.utc)
-        self.geod = Geodesic(6378388, 1/297.0)
+        self.geod = Geodesic.WGS84
         self.vel = 0
 
     def updatepos(self, curx, cury, curz):
@@ -115,23 +115,32 @@ class translator:
 
 
 trans = translator(40.819375, -96.706161)
-ser = serial.Serial('/dev/ttyUSB0', baudrate=38400)
+ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 
 pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
+global last_msg_sent_time
+last_msg_sent_time = datetime.now(timezone.utc).timestamp()
 
 
 def callback(t):
+    global last_msg_sent_time
     location = trans.gpsfromlocal(t.transform.translation.x,  # Calc gps lat/
                                   t.transform.translation.y)  # lon from local
+
     msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA 
                           t.transform.translation.y,  # msgs from local postion
                           t.transform.translation.z)
-    ser.write(msgs['GGA'].serialize())
-    ser.write(msgs['VTG'].serialize())
-    ser.write(msgs['RMC'].serialize())
-    rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'], msgs['VTG'], msgs['RMC']))
 
+    now = datetime.now(timezone.utc).timestamp()
+    if now - last_msg_sent_time > 0.125:  # rate limit so we donnt swamp the drone
+        rospy.loginfo("time: {}".format(1/(now - last_msg_sent_time)))
+        last_msg_sent_time = datetime.now(timezone.utc).timestamp()
+        ser.write(msgs['GGA'].serialize())
+        ser.write(msgs['VTG'].serialize())
+        ser.write(msgs['RMC'].serialize())
+
+    #rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'], msgs['VTG'], msgs['RMC']))
     gps_message = GPS()
     gps_message.latitude = location['lat2']
     gps_message.longitude = location['lon2']
@@ -144,7 +153,7 @@ def callback(t):
 
 
 def listener():
-    rospy.Subscriber("vicon/CNC_Head/CNC_Head", geometry_msgs.msg.TransformStamped,
+    rospy.Subscriber("vicon/wand/wand", geometry_msgs.msg.TransformStamped,
                      callback)
     rospy.spin()
 
