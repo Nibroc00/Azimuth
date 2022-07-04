@@ -10,6 +10,8 @@ from azimuth.msg import GPS
 import math
 from datetime import datetime, timezone
 import serial
+import csv
+
 MAG_DECLINATION = 2.78
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
@@ -121,13 +123,13 @@ pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
 global last_msg_sent_time
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-
+logfile = open('location2.csv', 'w')
+writer = csv.writer(logfile)
 
 def callback(t):
     global last_msg_sent_time
     location = trans.gpsfromlocal(t.transform.translation.x,  # Calc gps lat/
                                   t.transform.translation.y)  # lon from local
-
     msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA 
                           t.transform.translation.y,  # msgs from local postion
                           t.transform.translation.z)
@@ -139,6 +141,7 @@ def callback(t):
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
+        writer.writerow([location['lat2'], location['lon2']])
 
     #rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'], msgs['VTG'], msgs['RMC']))
     gps_message = GPS()
