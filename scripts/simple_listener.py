@@ -4,17 +4,20 @@ from gettext import translation
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
-from pynmeagps import NMEAMessage, GET
 from geographiclib.geodesic import Geodesic
 from azimuth.msg import GPS
 import math
 from datetime import datetime, timezone
 import serial
+
 import csv
 
 MAG_DECLINATION = 2.78
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
+LAT = 40.819375
+LON = -96.706161
+
 
 class translator:
 
@@ -36,7 +39,7 @@ class translator:
         self.lastupdate = datetime.now(timezone.utc)
 
     def getlocalloc(self):  # returns local cartesian postion
-        return (self.lastx, self.lasty, self.lastz)
+        return {"lastx": self.lastx, "lasty": self.lasty, "lastz": self.lastz}
 
     def azimuth(self, curx, cury):  # Calculates the azimuth
         azimuth = math.degrees(math.atan2(curx, cury))
@@ -51,6 +54,15 @@ class translator:
         return dis
 
     def course(self, curx, cury):  # returns angle of travel
+        difx = curx - self.lastx
+        dify = cury - self.lasty
+        # Check and make sure difference between points isnt too small
+
+        if difx < 0.001:
+            difx = 0
+        if dify < 0.001:
+            dify = 0
+
         azimuth = math.degrees(math.atan2(curx - self.lastx,
                                           cury - self.lasty))
         if azimuth < 0:
@@ -76,15 +88,16 @@ class translator:
                                 azi, dis)
 
     def craftmsg(self, curx, cury, curz):  # create msgs from local x, y, z
-        #Inilizise variables needed for msgs
+        #  Inilizise variables needed for msgs
         loc = self.gpsfromlocal(curx, cury)
         time = datetime.now(timezone.utc).time()
-        course = self.course(curx, curz)
+        course = self.course(curx, cury)
         coursem = course + MAG_DECLINATION
         if (course + MAG_DECLINATION) < 360:
             coursem = 360 - (course + MAG_DECLINATION)
         speed = self.speed(curx, cury)
 
+        # writer.writerow((loc['lat2'], loc['lon2'], course, speed))
 
         GGA = NMEAMessage('GP', 'GGA', GET, time=time,
                           lat=round(loc['lat2'], 7), NS='N',
@@ -116,34 +129,39 @@ class translator:
         return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC}
 
 
-trans = translator(40.819375, -96.706161)
+trans = translator(LAT, LON)
 ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 
 pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
-global last_msg_sent_time
+global last_msg_sent_time  # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-logfile = open('location2.csv', 'w')
-writer = csv.writer(logfile)
+
+# logfile = open("wand_latlog.csv", "w")
+# writer = csv.writer(logfile)
+
 
 def callback(t):
-    global last_msg_sent_time
+
+    global last_msg_sent_time  # Has to be defined twice or it get unhappy
+
     location = trans.gpsfromlocal(t.transform.translation.x,  # Calc gps lat/
                                   t.transform.translation.y)  # lon from local
-    msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA 
+
+    msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA
                           t.transform.translation.y,  # msgs from local postion
                           t.transform.translation.z)
-
-    now = datetime.now(timezone.utc).timestamp()
-    if now - last_msg_sent_time > 0.125:  # rate limit so we donnt swamp the drone
-        rospy.loginfo("time: {}".format(1/(now - last_msg_sent_time)))
+    course = trans.course(t.transform.translation.x,
+                          t.transform.translation.y)
+    # rospy.loginfo("{}".format(course))
+    now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
+    if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
+        # rospy.loginfo("time: {}".format(1/(now - last_msg_sent_time)))
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
-        writer.writerow([location['lat2'], location['lon2']])
 
-    #rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'], msgs['VTG'], msgs['RMC']))
     gps_message = GPS()
     gps_message.latitude = location['lat2']
     gps_message.longitude = location['lon2']
