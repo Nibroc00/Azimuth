@@ -10,8 +10,8 @@ import math
 from datetime import datetime, timezone
 import serial
 
-import csv
-
+import numpy as np
+import quaternion
 MAG_DECLINATION = 2.78
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
@@ -24,6 +24,7 @@ class translator:
     def __init__(self, originlat, originlon):
         self.originlat = originlat
         self.originlon = originlon
+        self.init_q = np.quaternion(0, 0, 1, 0)
         self.lastx = 0
         self.lasty = 0
         self.lastz = 0
@@ -44,6 +45,49 @@ class translator:
     def azimuth(self, curx, cury):  # Calculates the azimuth
         azimuth = math.degrees(math.atan2(curx, cury))
         return azimuth
+
+    def toeuler(self, qx, qy, qz, qw):
+        # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        # x-axis
+        sinr_cosp = 2 * (qw * qx + qy * qz)
+        cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
+        roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # y-axis
+        sinp = 2 * (qw * qy - qz * qx)
+
+        if abs(sinp) >= 1:
+            pitch = math.copysign(math.pi / 2, sinp)
+        else:
+            pitch = math.asin(sinp)
+
+        # z-axis
+        siny_cosp = 2 * (qw * qz + qx * qy)
+        cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
+        yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return (roll, pitch, yaw)
+
+    def oldtomagnitudes(self, qx, qy, qz, qw):
+        xr, yr, zr = self.toeuler(qx, qy, qz, qw)
+        zr = -zr  # flip it
+        if zr < 0:
+            zr = (math.pi * 2) + zr
+        if xr < 0:
+            xr = (math.pi * 2) + xr
+        x = math.sin(zr)
+        y = math.cos(zr)
+        z = math.sin(xr)
+        b = math.sqrt(x**2 + y**2)
+        z = math.sin(b * math.tan(xr))
+
+        # return z
+        return {'x': qx, 'y': qy, 'z': qz}
+
+    def tomagnitudes(self, q):
+        q = np.quaternion(q.w, q.x, q.y, q.z)
+        mag = q * self.init_q * q.inverse()
+        return {'x': mag.x, 'y': mag.y, 'z': mag.z}
 
     def distance_origin(self, curx, cury):  # returns distance from origin
         dis = math.sqrt(curx ** 2 + cury ** 2)
@@ -130,15 +174,12 @@ class translator:
 
 
 trans = translator(LAT, LON)
-ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
+#ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 
 pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
 global last_msg_sent_time  # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-
-# logfile = open("wand_latlog.csv", "w")
-# writer = csv.writer(logfile)
 
 
 def callback(t):
@@ -151,17 +192,18 @@ def callback(t):
     msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA
                           t.transform.translation.y,  # msgs from local postion
                           t.transform.translation.z)
-    course = trans.course(t.transform.translation.x,
-                          t.transform.translation.y)
-    # rospy.loginfo("{}".format(course))
+ 
+    rotation = trans.tomagnitudes(t.transform.rotation)
+
+
     now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
     if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
-        # rospy.loginfo("time: {}".format(1/(now - last_msg_sent_time)))
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-        ser.write(msgs['GGA'].serialize())
-        ser.write(msgs['VTG'].serialize())
-        ser.write(msgs['RMC'].serialize())
-
+        # ser.write(msgs['GGA'].serialize())
+        # ser.write(msgs['VTG'].serialize())
+        # ser.write(msgs['RMC'].serialize())
+        rospy.loginfo("\nx: {}\ny: {}\nz: {}".format(rotation['x'], rotation['y'], rotation['z']))
+ 
     gps_message = GPS()
     gps_message.latitude = location['lat2']
     gps_message.longitude = location['lon2']
