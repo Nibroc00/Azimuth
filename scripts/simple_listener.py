@@ -6,218 +6,106 @@ import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
 from geographiclib.geodesic import Geodesic
 from azimuth.msg import GPS
-import math
 from datetime import datetime, timezone
 import serial
-
+from Translator import Translator
 import numpy as np
-import quaternion
-MAG_DECLINATION = 2.78
+
+# Physical Constants
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
+
+# Constants that change based on your geological position and setup
+MAG_DECLINATION = 2.78
 LAT = 40.819375
 LON = -96.706161
+INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0) 
 
-
-class translator:
-
-    def __init__(self, originlat, originlon):
-        self.originlat = originlat
-        self.originlon = originlon
-        self.init_q = np.quaternion(0, 0, 1, 0)
-        self.lastx = 0
-        self.lasty = 0
-        self.lastz = 0
-        self.lastupdate = datetime.now(timezone.utc)
-        self.lastspeedcalc = datetime.now(timezone.utc)
-        self.geod = Geodesic.WGS84
-        self.vel = 0
-
-    def updatepos(self, curx, cury, curz):
-        self.lastx = curx
-        self.lasty = cury
-        self.lastz = curz
-        self.lastupdate = datetime.now(timezone.utc)
-
-    def getlocalloc(self):  # returns local cartesian postion
-        return {"lastx": self.lastx, "lasty": self.lasty, "lastz": self.lastz}
-
-    def azimuth(self, curx, cury):  # Calculates the azimuth
-        azimuth = math.degrees(math.atan2(curx, cury))
-        return azimuth
-
-    def toeuler(self, qx, qy, qz, qw):
-        # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
-        # x-axis
-        sinr_cosp = 2 * (qw * qx + qy * qz)
-        cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
-        roll = math.atan2(sinr_cosp, cosr_cosp)
-
-        # y-axis
-        sinp = 2 * (qw * qy - qz * qx)
-
-        if abs(sinp) >= 1:
-            pitch = math.copysign(math.pi / 2, sinp)
-        else:
-            pitch = math.asin(sinp)
-
-        # z-axis
-        siny_cosp = 2 * (qw * qz + qx * qy)
-        cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
-        yaw = math.atan2(siny_cosp, cosy_cosp)
-
-        return (roll, pitch, yaw)
-
-    def oldtomagnitudes(self, qx, qy, qz, qw):
-        xr, yr, zr = self.toeuler(qx, qy, qz, qw)
-        zr = -zr  # flip it
-        if zr < 0:
-            zr = (math.pi * 2) + zr
-        if xr < 0:
-            xr = (math.pi * 2) + xr
-        x = math.sin(zr)
-        y = math.cos(zr)
-        z = math.sin(xr)
-        b = math.sqrt(x**2 + y**2)
-        z = math.sin(b * math.tan(xr))
-
-        # return z
-        return {'x': qx, 'y': qy, 'z': qz}
-
-    def tomagnitudes(self, q):
-        q = np.quaternion(q.w, q.x, q.y, q.z)
-        mag = q * self.init_q * q.inverse()
-        return {'x': mag.x, 'y': mag.y, 'z': mag.z}
-
-    def distance_origin(self, curx, cury):  # returns distance from origin
-        dis = math.sqrt(curx ** 2 + cury ** 2)
-        return dis
-
-    def distance_last(self, curx, cury):  # returns distance from last pos
-        dis = math.sqrt((curx - self.lastx) ** 2 + (cury - self.lasty) ** 2)
-        return dis
-
-    def course(self, curx, cury):  # returns angle of travel
-        difx = curx - self.lastx
-        dify = cury - self.lasty
-        # Check and make sure difference between points isnt too small
-
-        if difx < 0.001:
-            difx = 0
-        if dify < 0.001:
-            dify = 0
-
-        azimuth = math.degrees(math.atan2(curx - self.lastx,
-                                          cury - self.lasty))
-        if azimuth < 0:
-            azimuth = 360 + azimuth
-        return azimuth
-
-    def speed(self, curx, cury):
-        curtime = datetime.now(timezone.utc)
-        deltatime = curtime.timestamp() - self.lastspeedcalc.timestamp()  # sec
-        if deltatime < 0.01:  # 0.01 is update rate
-            return self.vel   # If updated to fase results get inaccurate
-        dis = self.distance_last(curx, cury)
-
-        mps = round(dis, 4) / round(deltatime, 8)
-        self.lastspeedcalc = curtime
-        self.vel = mps
-        return mps
-
-    def gpsfromlocal(self, curx, cury):  # returns gps cordinates
-        azi = self.azimuth(curx, cury)
-        dis = self.distance_origin(curx, cury)
-        return self.geod.Direct(self.originlat, self.originlon,
-                                azi, dis)
-
-    def craftmsg(self, curx, cury, curz):  # create msgs from local x, y, z
-        #  Inilizise variables needed for msgs
-        loc = self.gpsfromlocal(curx, cury)
-        time = datetime.now(timezone.utc).time()
-        course = self.course(curx, cury)
-        coursem = course + MAG_DECLINATION
-        if (course + MAG_DECLINATION) < 360:
-            coursem = 360 - (course + MAG_DECLINATION)
-        speed = self.speed(curx, cury)
-
-        # writer.writerow((loc['lat2'], loc['lon2'], course, speed))
-
-        GGA = NMEAMessage('GP', 'GGA', GET, time=time,
-                          lat=round(loc['lat2'], 7), NS='N',
-                          lon=round(loc['lon2'], 7), EW='W',
-                          quality=1, numSV=12,
-                          HPOD=1, alt=round(curz, 2),
-                          altUnit='M', sep=0, sepUnit='M',
-                          diffStation=0)
-
-        VTG = NMEAMessage('GP', 'VTG', GET, cogt=round(course, 2),
-                          cogtUnit='DEG', cogm=round(coursem, 2),
-                          sogn=round(speed * MPS_TO_KPH, 2),
-                          sognUnit='K',
-                          sogk=round(speed * MPS_TO_KNOTS, 2),
-                          sogkUnit='N')
-
-        RMC = NMEAMessage('GP', 'RMC', GET,
-                          status='A',
-                          lat=round(loc['lat2'], 7), NS='N',
-                          lon=round(loc['lon2'], 7), EW='W',
-                          spd=round(speed * MPS_TO_KNOTS, 2),
-                          cog=round(course, 2),
-                          mv=MAG_DECLINATION,
-                          mvEW='E',
-                          posMode='A',
-                          navStatus='A'
-                          )
-
-        return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC}
-
-
-trans = translator(LAT, LON)
+trans = Translator(LAT, LON, INITIAL_QUATERNION_ROTATION)
 #ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
-
-pub = rospy.Publisher('gps_output', GPS, queue_size=10)
 rospy.init_node('translator', anonymous=True)
-global last_msg_sent_time  # variable needed to set send rate for serial msg
+global last_msg_sent_time   # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
 
 
+
+def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and is equip to handle
+
+    time = datetime.now(timezone.utc).time()
+    # Use Translator to translate data from local x, y, z to GPS
+    locationGPS = trans.localToGPS(curx, cury)
+    course = trans.course(curx, cury)
+    courseM = course + MAG_DECLINATION
+    speed = trans.speed(curx, cury)
+
+    # course calculates from -180-180 degrees, we want 0-360
+    if (courseM) < 360:
+        courseM = 360 - (courseM)
+
+    # writer.writerow((locationGPS['lat2'], locationGPS['lon2'], course, speed))
+
+    GGA = NMEAMessage(  'GP', 
+                        'GGA', 
+                        GET, 
+                        time=time,
+                        lat=round(locationGPS['lat2'], 7), NS='N',
+                        lon=round(locationGPS['lon2'], 7), EW='W',
+                        quality=1, numSV=12,
+                        HPOD=1, alt=round(curz, 2),
+                        altUnit='M', sep=0, sepUnit='M',
+                        diffStation=0
+                    )
+
+    VTG = NMEAMessage(  'GP', 
+                        'VTG', 
+                        GET, 
+                        cogt=round(course, 2),
+                        cogtUnit='DEG', cogm=round(courseM, 2),
+                        sogn=round(speed * MPS_TO_KPH, 2),
+                        sognUnit='K',
+                        sogk=round(speed * MPS_TO_KNOTS, 2),
+                        sogkUnit='N'
+                    )
+
+    RMC = NMEAMessage(  'GP', 
+                        'RMC', 
+                        GET,
+                        status='A',
+                        lat=round(locationGPS['lat2'], 7), NS='N',
+                        lon=round(locationGPS['lon2'], 7), EW='W',
+                        spd=round(speed * MPS_TO_KNOTS, 2),
+                        cog=round(course, 2),
+                        mv=MAG_DECLINATION,
+                        mvEW='E',
+                        posMode='A',
+                        navStatus='A'
+                    )
+
+    return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC}
+
 def callback(t):
 
-    global last_msg_sent_time  # Has to be defined twice or it get unhappy
-
-    location = trans.gpsfromlocal(t.transform.translation.x,  # Calc gps lat/
-                                  t.transform.translation.y)  # lon from local
-
-    msgs = trans.craftmsg(t.transform.translation.x,  # Creates a NMEA
-                          t.transform.translation.y,  # msgs from local postion
-                          t.transform.translation.z)
- 
-    rotation = trans.tomagnitudes(t.transform.rotation)
-
-
+    # global last_msg_sent_time  # Has to be defined twice or it get unhappy
+    msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
+                    t.transform.translation.y,
+                    t.transform.translation.z)
+    rotation = trans.quaternionToVector(t.transform.rotation)
     now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
+
     if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
         # ser.write(msgs['GGA'].serialize())
         # ser.write(msgs['VTG'].serialize())
         # ser.write(msgs['RMC'].serialize())
         rospy.loginfo("\nx: {}\ny: {}\nz: {}".format(rotation['x'], rotation['y'], rotation['z']))
- 
-    gps_message = GPS()
-    gps_message.latitude = location['lat2']
-    gps_message.longitude = location['lon2']
-    gps_message.altitude = t.transform.translation.z
-    pub.publish(gps_message)
 
-    trans.updatepos(t.transform.translation.x,
+    trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
                     t.transform.translation.z)
 
 
 def listener():
-    rospy.Subscriber("vicon/wand/wand", geometry_msgs.msg.TransformStamped,
-                     callback)
+    rospy.Subscriber("vicon/wand/wand", geometry_msgs.msg.TransformStamped, callback)
     rospy.spin()
 
 
