@@ -1,6 +1,6 @@
 import sys
 sys.path.insert(0, '../')
-import Translator
+import Azimuth.src.Translator as Translator
 
 trans = Translator.translator(40.819375, -96.706161)
 trans.updatepos(0, 0, 0)

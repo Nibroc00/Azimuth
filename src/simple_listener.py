@@ -1,6 +1,7 @@
 #!/user/bin/env python
 from ast import Str
 from gettext import translation
+# from Azimuth.src.Translator import Translator
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
@@ -8,8 +9,9 @@ from geographiclib.geodesic import Geodesic
 from azimuth.msg import GPS
 from datetime import datetime, timezone
 import serial
-from Translator import Translator
+import Translator
 import numpy as np
+import quaternion
 
 # Physical Constants
 MPS_TO_KPH = 3.6
@@ -21,7 +23,7 @@ LAT = 40.819375
 LON = -96.706161
 INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0) 
 
-trans = Translator(LAT, LON, INITIAL_QUATERNION_ROTATION)
+trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION)
 #ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 rospy.init_node('translator', anonymous=True)
 global last_msg_sent_time   # variable needed to set send rate for serial msg
