@@ -15,6 +15,7 @@ import quaternion
 import pigpio
 import threading
 import time
+import struct
 
 # I2C addres
 I2C_ADDR = 0x0E
@@ -105,8 +106,8 @@ def callback(t):
                     t.transform.translation.y,
                     t.transform.translation.z)
     rotation = trans.quaternionToVector(t.transform.rotation)
-    now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
 
+    now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
     # 8hz loop
     if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
@@ -118,18 +119,21 @@ def callback(t):
         #                                             rotation['z']))
 
     # check i2c reg for messages
-    s, b, d = pi.bsc_i2c(I2C_ADDR)
-    if b:
-        if d[0] == 0x07: # respond with ID
-            pi.bsc_i2c(I2C_ADDR,bytes.fromhex("C4"))
-            rospy.loginfo(d)
-        elif d[0] == 0x10 or d[0] == 0x11:  #config 1 and 2 respectivly
-            rospy.loginfo(d)
-        elif d[0] == 0x01:  # respond wit mag data
-            pi.bsc_i2c(I2C_ADDR,bytes.fromhex("BEEFFF"))
-            rospy.loginfo(d)
-        elif d[0] == 0x00:
-            pi.bsc_i2c(I2C_ADDR, bytes.fromhex("04"))
+    # s, b, d = pi.bsc_i2c(I2C_ADDR)
+    # if b:
+    #    if d[0] == 0x07: # respond with ID
+    #        pi.bsc_i2c(I2C_ADDR,bytes.fromhex("C4"))
+    #        rospy.loginfo(d)
+    #    elif d[0] == 0x10 or d[0] == 0x11:  #config 1 and 2 respectivly
+    #        rospy.loginfo(d)
+    #    elif d[0] == 0x01:  # respond with mag data
+    #        _x = abs(int(rotation['x'] * 20000)).to_bytes(2, 'big') ^ 0xFFFF
+    #        _y = abs(int(rotation['y'] * 20000)).to_bytes(2, 'big') ^ 
+    #        _z = abs(int(rotation['z'] * 20000)).to_bytes(2, 'big') | bytes.fromhex("8000")
+    #        pi.bsc_i2c(I2C_ADDR, _x + _y + _z)
+    #        rospy.loginfo(d)
+    #    elif d[0] == 0x00:
+    #        pi.bsc_i2c(I2C_ADDR, bytes.fromhex("04"))
 
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
