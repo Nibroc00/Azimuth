@@ -26,8 +26,17 @@ trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION) # Initilize
                                                                      # Does translation between cartesion
                                                                      # and gps corridnate space
                                                                      # and between quaternion and 3d vectors
-ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
+# init ros node
 rospy.init_node('translator', anonymous=True)
+
+# Parametes from ros launch
+vicon_target_id = rospy.get_param("/azimuth/vicon_target_id")
+serial_port_handle = rospy.get_param("/azimuth/vicon_target_id")
+baud_rate = rospy.get_param("/azimuth/baud_rate")
+
+ser = serial.Serial(serial_port_handle, baudrate=115200)
+# STOPPED HERE ADD IN VARAIBLS TO SCRIPT
+
 global last_msg_sent_time   # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
 
@@ -98,7 +107,9 @@ def callback(t):
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
-
+        # rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'].serialize(),
+        #                                  msgs['VTG'].serialize(),
+        #                                  msgs['RMC'].serialize()))
     # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,

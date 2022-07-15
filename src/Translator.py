@@ -103,7 +103,7 @@ class Translator:
         deltaTime = currentTime.timestamp() - self.lastSpeedCalc.timestamp()
         if deltaTime < 0.01:  # 0.01 is update rate
             return self.velocity   # If updated to fase results get inaccurate
-        distance = self.distance_last(currrentX, currrentY)
+        distance = self.distanceLast(currrentX, currrentY)
 
         mps = round(distance, 4) / round(deltaTime, 8)
         self.lastSpeedCalc = currentTime
@@ -112,7 +112,7 @@ class Translator:
 
     def localToGPS(self, currrentX, currrentY):  # returns gps cordinates based on initial longitude and latitude
         azimuth = self.azimuth(currrentX, currrentY)
-        distance = self.distance_origin(currrentX, currrentY)
+        distance = self.distanceOrigin(currrentX, currrentY)
         return self.geod.Direct(self.originLat, self.originLon, azimuth, distance)
 
 
