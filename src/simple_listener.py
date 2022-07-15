@@ -1,7 +1,6 @@
 #!/user/bin/env python
 from ast import Str
 from gettext import translation
-# from Azimuth.src.Translator import Translator
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
@@ -21,14 +20,16 @@ MPS_TO_KNOTS = 1.94384
 MAG_DECLINATION = 2.78
 LAT = 40.819375
 LON = -96.706161
-INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0) 
+INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0)
 
-trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION)
-#ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
+trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION) # Initilize translator object
+                                                                     # Does translation between cartesion
+                                                                     # and gps corridnate space
+                                                                     # and between quaternion and 3d vectors
+ser = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 rospy.init_node('translator', anonymous=True)
 global last_msg_sent_time   # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-
 
 
 def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and is equip to handle
@@ -44,11 +45,10 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
     if (courseM) < 360:
         courseM = 360 - (courseM)
 
-    # writer.writerow((locationGPS['lat2'], locationGPS['lon2'], course, speed))
 
-    GGA = NMEAMessage(  'GP', 
-                        'GGA', 
-                        GET, 
+    GGA = NMEAMessage(  'GP',
+                        'GGA',
+                        GET,
                         time=time,
                         lat=round(locationGPS['lat2'], 7), NS='N',
                         lon=round(locationGPS['lon2'], 7), EW='W',
@@ -58,9 +58,9 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
                         diffStation=0
                     )
 
-    VTG = NMEAMessage(  'GP', 
-                        'VTG', 
-                        GET, 
+    VTG = NMEAMessage(  'GP',
+                        'VTG',
+                        GET,
                         cogt=round(course, 2),
                         cogtUnit='DEG', cogm=round(courseM, 2),
                         sogn=round(speed * MPS_TO_KPH, 2),
@@ -69,8 +69,8 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
                         sogkUnit='N'
                     )
 
-    RMC = NMEAMessage(  'GP', 
-                        'RMC', 
+    RMC = NMEAMessage(  'GP',
+                        'RMC',
                         GET,
                         status='A',
                         lat=round(locationGPS['lat2'], 7), NS='N',
@@ -87,20 +87,19 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
 
 def callback(t):
 
-    # global last_msg_sent_time  # Has to be defined twice or it get unhappy
+    global last_msg_sent_time  # Has to be defined twice or it get unhappy
     msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
-                    t.transform.translation.y,
-                    t.transform.translation.z)
-    rotation = trans.quaternionToVector(t.transform.rotation)
+                     t.transform.translation.y,
+                     t.transform.translation.z)
+    # 8hz loop
     now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
-
     if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
-        # ser.write(msgs['GGA'].serialize())
-        # ser.write(msgs['VTG'].serialize())
-        # ser.write(msgs['RMC'].serialize())
-        rospy.loginfo("\nx: {}\ny: {}\nz: {}".format(rotation['x'], rotation['y'], rotation['z']))
+        ser.write(msgs['GGA'].serialize())
+        ser.write(msgs['VTG'].serialize())
+        ser.write(msgs['RMC'].serialize())
 
+    # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
                     t.transform.translation.z)
@@ -112,4 +111,4 @@ def listener():
 
 
 if __name__ == '__main__':
-    listener() 
+    listener()
