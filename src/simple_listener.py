@@ -31,11 +31,10 @@ rospy.init_node('translator', anonymous=True)
 
 # Parametes from ros launch
 vicon_target_id = rospy.get_param("/azimuth/vicon_target_id")
-serial_port_handle = rospy.get_param("/azimuth/vicon_target_id")
+serial_port_handle = rospy.get_param("/azimuth/serial_port_handle")
 baud_rate = rospy.get_param("/azimuth/baud_rate")
 
-ser = serial.Serial(serial_port_handle, baudrate=115200)
-# STOPPED HERE ADD IN VARAIBLS TO SCRIPT
+ser = serial.Serial(serial_port_handle, baud_rate)
 
 global last_msg_sent_time   # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
@@ -117,7 +116,7 @@ def callback(t):
 
 
 def listener():
-    rospy.Subscriber("vicon/wand/wand", geometry_msgs.msg.TransformStamped, callback)
+    rospy.Subscriber(vicon_target_id, geometry_msgs.msg.TransformStamped, callback)
     rospy.spin()
 
 

@@ -6,7 +6,7 @@
   <!-- Fixed vicon world frame -->
   <arg name="vicon_world_frame" default="/vicon/world"/>
   <!-- Vicon target -->
-  <arg name="vicon_target" default="NONE"/>
+  <arg name="vicon_target" default="/vicon/wand/wand"/>
   <!-- Serial port -->
   <arg name="serial_port" default="/dev/ttyUSB0"/>
   <!-- baud rate -->
