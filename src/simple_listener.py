@@ -96,13 +96,12 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
     HDT = NMEAMessage( 'GP',
                        'HDT',
                        GET,
-                       heading=45
+                       heading=180
                      )
 
     return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC, 'HDT': HDT}
 
 def callback(t):
-
     global last_msg_sent_time  # Has to be defined twice or it get unhappy
     msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
                      t.transform.translation.y,
@@ -114,11 +113,8 @@ def callback(t):
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
-        ser.write(msgs['HDT'].serialize())
-        rospy.loginfo("{}\n{}\n{}\n{}\n".format(msgs['GGA'],
-                                                msgs['VTG'],
-                                                msgs['RMC'],
-                                                msgs['HDT']))
+        #ser.write(msgs['HDT'].serialize())
+ 
     # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
