@@ -11,7 +11,9 @@ import serial
 import Translator
 import numpy as np
 import quaternion
+import csv
 
+rospy.loginfo("ON YAW")
 # Physical Constants
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
@@ -91,7 +93,13 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
                         navStatus='A'
                     )
 
-    return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC}
+    HDT = NMEAMessage( 'GP',
+                       'HDT',
+                       GET,
+                       heading=45
+                     )
+
+    return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC, 'HDT': HDT}
 
 def callback(t):
 
@@ -99,16 +107,17 @@ def callback(t):
     msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
                      t.transform.translation.y,
                      t.transform.translation.z)
-    # 8hz loop
+        # 8hz loop
     now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
-    if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out
+    if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out 
         last_msg_sent_time = datetime.now(timezone.utc).timestamp()
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
+        ser.write(msgs['HDT'].serialize())
         # rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'].serialize(),
-        #                                  msgs['VTG'].serialize(),
-        #                                  msgs['RMC'].serialize()))
+        #                                   msgs['VTG'].serialize(),
+        #                                   msgs['RMC'].serialize()))
     # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
@@ -117,6 +126,7 @@ def callback(t):
 
 def listener():
     rospy.Subscriber(vicon_target_id, geometry_msgs.msg.TransformStamped, callback)
+    rospy.loginfo("Starting loop")
     rospy.spin()
 
 
