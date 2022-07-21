@@ -94,7 +94,8 @@ class Translator:
         if deltaX < 0.001: deltaX = 0
         if deltaY < 0.001: deltaY = 0
 
-        azimuth = math.degrees(math.atan2(currrentX - self.lastX, currrentY - self.lastY))
+        #azimuth = math.degrees(math.atan2(currrentX - self.lastX, currrentY - self.lastY))
+        azimuth = math.degrees(math.atan2(deltaX, deltaY))
         if azimuth < 0: azimuth = 360 + azimuth
         return azimuth
 

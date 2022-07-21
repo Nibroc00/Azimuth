@@ -6,7 +6,7 @@
   <!-- Fixed vicon world frame -->
   <arg name="vicon_world_frame" default="/vicon/world"/>
   <!-- Vicon target -->
-  <arg name="vicon_target" default="/vicon/AZIMUTH/AZIMUTH"/>
+  <arg name="vicon_target" default="/vicon/AZIMTH/AZIMUTH"/>
   <!-- Serial port -->
   <arg name="serial_port" default="/dev/ttyUSB0"/>
   <!-- baud rate -->

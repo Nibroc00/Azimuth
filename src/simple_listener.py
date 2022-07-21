@@ -13,7 +13,7 @@ import numpy as np
 import quaternion
 import csv
 
-rospy.loginfo("ON YAW")
+
 # Physical Constants
 MPS_TO_KPH = 3.6
 MPS_TO_KNOTS = 1.94384
@@ -115,9 +115,10 @@ def callback(t):
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
         ser.write(msgs['HDT'].serialize())
-        # rospy.loginfo("{}\n{}\n{}".format(msgs['GGA'].serialize(),
-        #                                   msgs['VTG'].serialize(),
-        #                                   msgs['RMC'].serialize()))
+        rospy.loginfo("{}\n{}\n{}\n{}\n".format(msgs['GGA'],
+                                                msgs['VTG'],
+                                                msgs['RMC'],
+                                                msgs['HDT']))
     # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
