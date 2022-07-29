@@ -42,7 +42,7 @@ global last_msg_sent_time   # variable needed to set send rate for serial msg
 last_msg_sent_time = datetime.now(timezone.utc).timestamp()
 
 
-def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and is equip to handle
+def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request and is equip to handle
 
     time = datetime.now(timezone.utc).time()
     # Use Translator to translate data from local x, y, z to GPS
@@ -50,6 +50,7 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
     course = trans.course(curx, cury)
     courseM = course + MAG_DECLINATION
     speed = trans.speed(curx, cury)
+    heading = trans.heading(q)
 
     # course calculates from -180-180 degrees, we want 0-360
     if (courseM) < 360:
@@ -73,7 +74,7 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
                         GET,
                         cogt=round(course, 2),
                         cogtUnit='DEG', cogm=round(courseM, 2),
-                        sogn=round(speed * MPS_TO_KPH, 2),
+                        sogn=round(speed * MPS_TO_KPH, 3),
                         sognUnit='K',
                         sogk=round(speed * MPS_TO_KNOTS, 2),
                         sogkUnit='N'
@@ -96,7 +97,7 @@ def craftMsgs(curx, cury, curz):  # Creates messages that ArduPilot request and 
     HDT = NMEAMessage( 'GP',
                        'HDT',
                        GET,
-                       heading=180
+                       heading=heading
                      )
 
     return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC, 'HDT': HDT}
@@ -105,7 +106,8 @@ def callback(t):
     global last_msg_sent_time  # Has to be defined twice or it get unhappy
     msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
                      t.transform.translation.y,
-                     t.transform.translation.z)
+                     t.transform.translation.z,
+                     t.transform.rotation)
         # 8hz loop
     now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
     if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out 
@@ -113,8 +115,8 @@ def callback(t):
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
-        #ser.write(msgs['HDT'].serialize())
- 
+        ser.write(msgs['HDT'].serialize())
+
     # Update current position data for speed calculations
     trans.updatePos(t.transform.translation.x,
                     t.transform.translation.y,
