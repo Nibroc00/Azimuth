@@ -1,6 +1,5 @@
 '''Translator module, takes corridinates and turns them into gps
     data'''
-from pynmeagps import NMEAMessage, GET
 from geographiclib.geodesic import Geodesic
 import math
 from datetime import datetime, timezone

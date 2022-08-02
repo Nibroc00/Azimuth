@@ -2,8 +2,8 @@
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
-from azimuth.msg import GPS
 from datetime import datetime, timezone
+from azimuth.msg import GPS  # remove later breaks everything if removed
 import serial
 import Translator
 import numpy as np
