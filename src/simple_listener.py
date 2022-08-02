@@ -1,17 +1,13 @@
 #!/user/bin/env python
-from ast import Str
-from gettext import translation
 import rospy
 import geometry_msgs.msg
 from pynmeagps import NMEAMessage, GET
-from geographiclib.geodesic import Geodesic
 from azimuth.msg import GPS
 from datetime import datetime, timezone
 import serial
 import Translator
 import numpy as np
 import quaternion
-import csv
 
 
 # Physical Constants
@@ -20,14 +16,8 @@ MPS_TO_KNOTS = 1.94384
 
 # Constants that change based on your geological position and setup
 MAG_DECLINATION = 2.78
-LAT = 40.819375
-LON = -96.706161
 INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0)
 
-trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION) # Initilize translator object
-                                                                     # Does translation between cartesion
-                                                                     # and gps corridnate space
-                                                                     # and between quaternion and 3d vectors
 # init ros node
 rospy.init_node('translator', anonymous=True)
 
@@ -35,6 +25,13 @@ rospy.init_node('translator', anonymous=True)
 vicon_target_id = rospy.get_param("/azimuth/vicon_target_id")
 serial_port_handle = rospy.get_param("/azimuth/serial_port_handle")
 baud_rate = rospy.get_param("/azimuth/baud_rate")
+LAT = rospy.get_param("/azimuth/lat")
+LON = rospy.get_param("/azimuth/lon")
+
+trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION) # Initilize translator object
+                                                                     # Does translation between cartesion
+                                                                     # and gps corridnate space
+                                                                     # and between quaternion and 3d vectors
 
 ser = serial.Serial(serial_port_handle, baud_rate)
 
