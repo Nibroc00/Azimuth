@@ -10,12 +10,12 @@ Azimuth runs as a ROS node and was developed using ros noetic. ROS is an opensou
 ## Enabling Heading from GPS
 !!! For ardupiliot copter firmware !!!
 To enable heading From GPS, the following paramaters need to be set in Mission Planner:
-		AHRS_EKF_TYPE=3
-		GPS_TYPE=16
-		COMPASS_USE=0
-		COMPASS_USE2=0
-		EK3_MAG_CAL=5
-		EK3_SRC1_YAW=2
+AHRS_EKF_TYPE=3
+- GPS_TYPE=16
+- COMPASS_USE=0
+- COMPASS_USE2=0
+- EK3_MAG_CAL=5
+- EK3_SRC1_YAW=2
 
 ## Installing the package 
 To install our package, simply git clone the repository to the src directory of your catkin workspace and the catkin_make or catkin_build
