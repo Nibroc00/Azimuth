@@ -1,5 +1,9 @@
-'''Translator module, takes corridinates and turns them into gps
-    data'''
+'''
+Translator class that takes cartesian coordinates (in meters) and translates to
+GPS coordinates based off of the (Longitude, Latitude) offset of (0, 0) origin.
+Also takes quaternion orientation data and translates to a heading.
+'''
+from pynmeagps import NMEAMessage, GET
 from geographiclib.geodesic import Geodesic
 import math
 from datetime import datetime, timezone
@@ -9,6 +13,7 @@ import numpy as np
 
 class Translator:
 
+    # Constructor, requires latitude of origin, longitude of origin, and base quaternion oreintation.
     def __init__(self, originLat, originLon, originQ):
         self.originLat = originLat
         self.originLon = originLon
@@ -27,95 +32,68 @@ class Translator:
         self.lastZ = currrentZ
         self.lastUpdate = datetime.now(timezone.utc)
 
-    # def getlocalloc(self):  # returns local cartesian postion
-    #     return {"lastX": self.lastX, "lastY": self.lastY, "lastZ": self.lastZ}
-
-    def azimuth(self, currrentX, currrentY):  # Calculates the azimuth
+    # Returns the azimuth of the given postition from the origin
+    def azimuth(self, currrentX, currrentY):  
         azimuth = math.degrees(math.atan2(currrentX, currrentY))
         return azimuth
 
-    # def toeuler(self, qx, qy, qz, qw):
-    #     # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
-    #     # x-axis
-    #     sinr_cosp = 2 * (qw * qx + qy * qz)
-    #     cosr_cosp = 1 - 2 * (qx * qx + qy * qy)
-    #     roll = math.atan2(sinr_cosp, cosr_cosp)
-
-    #     # y-axis
-    #     sinp = 2 * (qw * qy - qz * qx)
-
-    #     if abs(sinp) >= 1:
-    #         pitch = math.copysign(math.pi / 2, sinp)
-    #     else:
-    #         pitch = math.asin(sinp)
-
-    #     # z-axis
-    #     siny_cosp = 2 * (qw * qz + qx * qy)
-    #     cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
-    #     yaw = math.atan2(siny_cosp, cosy_cosp)
-
-    #     return (roll, pitch, yaw)
-
-    # def oldtomagnitudes(self, qx, qy, qz, qw):
-    #     xr, yr, zr = self.toeuler(qx, qy, qz, qw)
-    #     zr = -zr  # flip it
-    #     if zr < 0:
-    #         zr = (math.pi * 2) + zr
-    #     if xr < 0:
-    #         xr = (math.pi * 2) + xr
-    #     x = math.sin(zr)
-    #     y = math.cos(zr)
-    #     z = math.sin(xr)
-    #     b = math.sqrt(x**2 + y**2)
-    #     z = math.sin(b * math.tan(xr))
-
-    #     # return z
-    #     return {'x': qx, 'y': qy, 'z': qz}
-
-    def quaternionToVector(self, q): #takes measured quarternion rotation and calculates 3D vector based on originQ
+    # Returns the 3D vector that points in the same direction as given quaternion
+    def quaternionToVector(self, q):
         q = np.quaternion(q.w, q.x, q.y, q.z)
         mag = q * self.originQ * q.inverse()
         return {'x': mag.x, 'y': mag.y, 'z': mag.z}
 
-    def distanceOrigin(self, currrentX, currrentY):  # returns distance from origin
+    # Returns the distance from origin of the given position
+    def distanceOrigin(self, currrentX, currrentY):
         distance = math.sqrt(currrentX ** 2 + currrentY ** 2)
         return distance
 
-    def distanceLast(self, currrentX, currrentY):  # returns distance from last pos
+    # Returns the distance from last known postition
+    def distanceLast(self, currrentX, currrentY):
         distance = math.sqrt((currrentX - self.lastX) ** 2 + (currrentY - self.lastY) ** 2)
         return distance
 
-    def course(self, currrentX, currrentY):  # returns angle of travel
+    # Returns the angle of travel from north
+    def course(self, currrentX, currrentY):
         deltaX = currrentX - self.lastX
         deltaY = currrentY - self.lastY
 
-        # Check and make sure difference between points isnt too small
+        # Check and make sure difference between points isnt too small else return 0
+        # Necessary because of Vicon noise when not moving
         if deltaX < 0.001: deltaX = 0
         if deltaY < 0.001: deltaY = 0
 
         azimuth = math.degrees(math.atan2(currrentX - self.lastX, currrentY - self.lastY))
-        #azimuth = math.degrees(math.atan2(deltaX, deltaY))
         if azimuth < 0: azimuth = 360 + azimuth
         return azimuth
 
+    # Returns heading from a given quaternion
     def heading(self, q):
         mag = self.quaternionToVector(q)
         heading = math.degrees(math.atan2(mag['x'], mag['y']))
         return heading
 
+    # Returns the speed based on change in current and last position/time, returns 
+    # a value in meters per second
     def speed(self, currrentX, currrentY): # Returns speed based on change in time and position
         currentTime = datetime.now(timezone.utc)
         deltaTime = currentTime.timestamp() - self.lastSpeedCalc.timestamp()
-        if deltaTime < 0.01:  # 0.01 is update rate
-            return self.velocity   # If updated to fase results get inaccurate
-        distance = self.distanceLast(currrentX, currrentY)
 
+        # Only returns a change in velocity if 0.01 seconds has passed (100Hz). This is
+        # because faster rates can give bad results due to Vicon noise, causing it to 
+        # have unstable readings.
+        if deltaTime < 0.01:
+            return self.velocity
+
+        distance = self.distanceLast(currrentX, currrentY)
         mps = round(distance, 4) / round(deltaTime, 8)
         self.lastSpeedCalc = currentTime
         self.velocity = mps
         return mps
 
-    def localToGPS(self, currrentX, currrentY):  # returns gps cordinates based on initial longitude and latitude
+    # Returns GPS coordinates based on cartesian coordinates from origin, where the
+    # origin's longitude and latitude are know. 
+    def localToGPS(self, currrentX, currrentY):
         azimuth = self.azimuth(currrentX, currrentY)
         distance = self.distanceOrigin(currrentX, currrentY)
         return self.geod.Direct(self.originLat, self.originLon, azimuth, distance)
