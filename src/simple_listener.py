@@ -18,28 +18,33 @@ MPS_TO_KNOTS = 1.94384
 MAG_DECLINATION = 2.78
 INITIAL_QUATERNION_ROTATION = np.quaternion(0, 0, 1, 0)
 
-# init ros node
+# Initialize ROS node
 rospy.init_node('translator', anonymous=True)
 
-# Parametes from ros launch
+# Parameters from ROS launch
 vicon_target_id = rospy.get_param("/azimuth/vicon_target_id")
 serial_port_handle = rospy.get_param("/azimuth/serial_port_handle")
 baud_rate = rospy.get_param("/azimuth/baud_rate")
-LAT = rospy.get_param("/azimuth/lat")
-LON = rospy.get_param("/azimuth/lon")
+LON = rospy.get_param("/azimuth/lon") # Longitude of (0, 0) of your tracking system
+LAT = rospy.get_param("/azimuth/lat") # Latitude of (0, 0) of your tracking system
 
-trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION) # Initilize translator object
-                                                                     # Does translation between cartesion
-                                                                     # and gps corridnate space
-                                                                     # and between quaternion and 3d vectors
+# Translator object that takes cartesian coordinates (in meters) and translates to
+# GPS coordinates based off of the (Longitude, Latitude) offset of (0, 0) origin.
+# Also takes quaternion orientation data and translates to a heading.
+trans = Translator.Translator(LAT, LON, INITIAL_QUATERNION_ROTATION)
 
+# Open serial port from Node to Drone
 ser = serial.Serial(serial_port_handle, baud_rate)
 
-global last_msg_sent_time   # variable needed to set send rate for serial msg
-last_msg_sent_time = datetime.now(timezone.utc).timestamp()
+# variable needed to set send rate for serial msg to prevent brown outs
+global previousTime   
+previousTime = datetime.now(timezone.utc).timestamp()
 
-
-def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request and is equip to handle
+# Creates NMEA messages that ArduPilot requests and is equip to handle 
+# (GGA, VTG, RMC, HDT)
+# Takes current X position, Y Position, Z position, and a quaternion object of the 
+# current orientation.
+def craftMsgs(curx, cury, curz, q):
 
     time = datetime.now(timezone.utc).time()
     # Use Translator to translate data from local x, y, z to GPS
@@ -49,11 +54,11 @@ def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request a
     speed = trans.speed(curx, cury)
     heading = trans.heading(q)
 
-    # course calculates from -180-180 degrees, we want 0-360
+    # course calculates from -180 to 180 degrees, we want 0 to 360 degress
     if (courseM) < 360:
         courseM = 360 - (courseM)
 
-
+    # GPS location data message
     GGA = NMEAMessage(  'GP',
                         'GGA',
                         GET,
@@ -66,6 +71,7 @@ def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request a
                         diffStation=0
                     )
 
+    # Velocity and course data message
     VTG = NMEAMessage(  'GP',
                         'VTG',
                         GET,
@@ -77,6 +83,7 @@ def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request a
                         sogkUnit='N'
                     )
 
+    # Required minimum data message
     RMC = NMEAMessage(  'GP',
                         'RMC',
                         GET,
@@ -91,6 +98,7 @@ def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request a
                         navStatus='A'
                     )
 
+    # Heading data message
     HDT = NMEAMessage( 'GP',
                        'HDT',
                        GET,
@@ -99,16 +107,24 @@ def craftMsgs(curx, cury, curz, q):  # Creates messages that ArduPilot request a
 
     return {'GGA': GGA, 'VTG': VTG, 'RMC': RMC, 'HDT': HDT}
 
+
+# Callback for when Vicon ROS topic gets published to
 def callback(t):
-    global last_msg_sent_time  # Has to be defined twice or it get unhappy
+    global previousTime
+
+    # Create NMEA messages from data published on topic
     msgs = craftMsgs(t.transform.translation.x,  # Creates a NMEA msgs from local postion
                      t.transform.translation.y,
                      t.transform.translation.z,
                      t.transform.rotation)
-        # 8hz loop
-    now = datetime.now(timezone.utc).timestamp()  # gets current time in sec
-    if now - last_msg_sent_time > 0.125:  # rate limit so we dont brown out 
-        last_msg_sent_time = datetime.now(timezone.utc).timestamp()
+    
+    time = datetime.now(timezone.utc).timestamp()  # gets current time in sec
+
+    # Callback only sends messages if 0.125 seconds has passed (8Hz). This is
+    # because faster rates can brown out the drone, causing it to have unstable 
+    # readings.
+    if time - previousTime > 0.125: 
+        previousTime = datetime.now(timezone.utc).timestamp()
         ser.write(msgs['GGA'].serialize())
         ser.write(msgs['VTG'].serialize())
         ser.write(msgs['RMC'].serialize())
@@ -119,12 +135,12 @@ def callback(t):
                     t.transform.translation.y,
                     t.transform.translation.z)
 
-
+# Listen to Vicon's published topic on your target
 def listener():
     rospy.Subscriber(vicon_target_id, geometry_msgs.msg.TransformStamped, callback)
     rospy.loginfo("Starting loop")
     rospy.spin()
 
-
+# Main
 if __name__ == '__main__':
     listener()
