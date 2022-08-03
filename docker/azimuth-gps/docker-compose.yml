@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  vicon-gps:
+    image: vicon-gps-provider:latest
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    privileged: true
+    container_name: vicon-gps-provider
+    network_mode: "host"
+    volumes: 
+       - ${PORT}:${PORT}
+    command: >
+         /bin/bash -c "source /home/catkin_ws/devel/setup.bash && roslaunch azimuth gps.launch vicon_target:=${vicon_target} serial_port:=${serial_port} baud:=${baud} lat:=${lat} lon:=${lon}"
+         #restart: unless-stopped
